@@ -1,0 +1,28 @@
+# Dockerfile.base
+FROM pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    git wget ca-certificates python3 python3-pip && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# RFdiffusion
+RUN git clone https://github.com/RosettaCommons/RFdiffusion.git
+WORKDIR /app/RFdiffusion
+RUN pip install --no-cache-dir /app/RFdiffusion/env/SE3Transformer
+RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir omegaconf hydra-core opt_einsum scipy
+# DGL (CUDA 11.6) for graph ops used in RFdiffusion
+RUN pip install --no-cache-dir dgl-cu116 -f https://data.dgl.ai/wheels/cu116/repo.html
+
+# LigandMPNN
+WORKDIR /app
+RUN git clone https://github.com/dauparas/LigandMPNN.git
+WORKDIR /app/LigandMPNN
+RUN sed -i 's/wget -q /wget -q --no-check-certificate /g' get_model_params.sh
+RUN pip install --no-cache-dir -r requirements.txt
+RUN bash get_model_params.sh ./model_params
+
+ENV DGLBACKEND="pytorch"
+WORKDIR /workspace
