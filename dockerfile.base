@@ -1,37 +1,73 @@
+# syntax=docker/dockerfile:1.5
 # Dockerfile.base
 FROM pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH} \
+    DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    build-essential \
-    ca-certificates \
-    cmake \
-    curl \
-    git \
-    git-lfs \
-    libffi-dev \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libssl-dev \
-    libxext6 \
-    libxrender1 \
-    pkg-config \
-    python3 \
-    python3-dev \
-    python3-pip \
-    wget && \
-    rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=apt-lists,target=/var/lib/apt/lists,sharing=locked \
+    set -eux; \
+    echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries; \
+    echo 'Acquire::http::Timeout "30";' > /etc/apt/apt.conf.d/80-timeout; \
+    echo 'Acquire::http::Pipeline-Depth "0";' > /etc/apt/apt.conf.d/80-pipeline-depth; \
+    packages=" \
+        build-essential \
+        ca-certificates \
+        cmake \
+        curl \
+        git \
+        git-lfs \
+        libcusparse-11-7 \
+        libcusparseLt-11-7 \
+        libffi-dev \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libssl-dev \
+        libxext6 \
+        libxrender1 \
+        pkg-config \
+        python3 \
+        python3-dev \
+        python3-pip \
+        wget \
+    "; \
+    for attempt in 1 2 3 4 5; do \
+        if apt-get update && apt-get install -y --no-install-recommends ${packages}; then \
+            break; \
+        fi; \
+        if [ "$attempt" -eq 5 ]; then \
+            exit 1; \
+        fi; \
+        echo "apt-get install failed (attempt ${attempt}/5). Retrying..."; \
+        sleep $((attempt * 5)); \
+    done
 
 RUN git lfs install --system
 RUN python3 -m pip install --upgrade pip setuptools wheel
-RUN cd /usr/local/cuda/lib64 && \
-    libcudart=$(find . -maxdepth 1 -name 'libcudart.so.*' -type f | head -n 1 | sed 's|./||') && \
-    [ -n "${libcudart}" ] && ln -sf "${libcudart}" libcudart.so && \
-    [ -n "${libcudart}" ] && ln -sf "${libcudart}" libcudart.so.11.0
+RUN set -eux; \
+    cuda_lib_dir=""; \
+    for candidate in /usr/local/cuda/lib64 /usr/local/cuda/lib; do \
+        if [ -d "${candidate}" ]; then \
+            cuda_lib_dir="${candidate}"; \
+            break; \
+        fi; \
+    done; \
+    if [ -z "${cuda_lib_dir}" ]; then \
+        echo "CUDA library directory not found; skipping symlink setup"; \
+    else \
+        cd "${cuda_lib_dir}"; \
+        libcudart=$(find . -maxdepth 1 -name 'libcudart.so.*' -type f | head -n 1 | sed 's|./||'); \
+        if [ -n "${libcudart}" ]; then \
+            ln -sf "${libcudart}" libcudart.so; \
+            ln -sf "${libcudart}" libcudart.so.11.0; \
+        else \
+            echo "libcudart.so.* not found under ${cuda_lib_dir}; skipping symlink setup"; \
+        fi; \
+    fi
 
 WORKDIR /app
 
