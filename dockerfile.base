@@ -10,6 +10,12 @@ ENV PYTHONUNBUFFERED=1 \
 RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=apt-lists,target=/var/lib/apt/lists,sharing=locked \
     set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-keyring_1.1-1_all.deb -o /tmp/cuda-keyring.deb; \
+    dpkg -i /tmp/cuda-keyring.deb; \
+    rm /tmp/cuda-keyring.deb; \
+    apt-get update; \
     echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries; \
     echo 'Acquire::http::Timeout "30";' > /etc/apt/apt.conf.d/80-timeout; \
     echo 'Acquire::http::Pipeline-Depth "0";' > /etc/apt/apt.conf.d/80-pipeline-depth; \
@@ -21,7 +27,7 @@ RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
         git \
         git-lfs \
         libcusparse-11-7 \
-        libcusparseLt-11-7 \
+        libcusparselt0 \
         libffi-dev \
         libgl1 \
         libglib2.0-0 \
